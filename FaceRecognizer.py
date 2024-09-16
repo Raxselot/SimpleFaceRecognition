@@ -1,6 +1,7 @@
 import cv2
 import face_recognition
 import json
+import numpy as np
 import os
 
 class FaceRecognitionManager:
@@ -11,10 +12,14 @@ class FaceRecognitionManager:
         self.load_saved_faces()
 
     def add_person(self, image_path, person_name):
+        if not os.path.exists(image_path):
+            print(f"File {image_path} does not exist.")
+            return
+
         try:
             image = face_recognition.load_image_file(image_path)
             face_encodings = face_recognition.face_encodings(image)
-            if face_encodings:  
+            if face_encodings: 
                 self.saved_face_encodings.append(face_encodings[0])
                 self.saved_names.append(person_name)
                 self.save_faces()
@@ -25,24 +30,35 @@ class FaceRecognitionManager:
 
     def load_saved_faces(self):
         if os.path.exists(self.storage_file):
-            with open(self.storage_file, 'r') as file:
-                data = json.load(file)
-                self.saved_face_encodings = [face_recognition.face_encodings(face_recognition.load_image_file(img))[0] for img in data['images']]
-                self.saved_names = data['names']
+            if os.path.getsize(self.storage_file) == 0: 
+                print("The saved faces file is empty.")
+            else:
+                try:
+                    with open(self.storage_file, 'r') as file:
+                        data = json.load(file)
+                        self.saved_face_encodings = [np.array(encoding) for encoding in data['encodings']]
+                        self.saved_names = data['names']
+                except json.JSONDecodeError as e:
+                    print(f"Error reading the saved faces JSON file: {e}")
         else:
-            print("No saved faces found.")
+            print("No saved faces in the database. Starting with an empty database.")
 
     def save_faces(self):
-        data = {'images': self.saved_face_encodings, 'names': self.saved_names}
+        face_encodings_as_lists = [encoding.tolist() for encoding in self.saved_face_encodings]
+        data = {'encodings': face_encodings_as_lists, 'names': self.saved_names}
         with open(self.storage_file, 'w') as file:
             json.dump(data, file)
-
+            print("save faces written")
 class VideoFaceRecognition:
     def __init__(self, face_manager):
         self.face_manager = face_manager
         self.camera = cv2.VideoCapture(0)
 
     def detect_faces(self):
+        if not self.camera.isOpened():
+            print("Camera couldn't be opened.")
+            return
+
         while True:
             ret, frame = self.camera.read()
 
@@ -53,7 +69,16 @@ class VideoFaceRecognition:
             rgb_frame = frame[:, :, ::-1]
 
             face_locations = face_recognition.face_locations(rgb_frame)
+            print(f"Face locations: {face_locations}")  
+
+
+            if not face_locations:
+                print("No faces detected.")
+                continue
+
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            print(f"Face encodings: {face_encodings}") 
+
 
             for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
                 matches = face_recognition.compare_faces(self.face_manager.saved_face_encodings, face_encoding)
@@ -84,10 +109,13 @@ class VideoFaceRecognition:
 
 
 if __name__ == "__main__":
+    print("Loading saved faces...")
     face_manager = FaceRecognitionManager()
 
-    face_manager.add_person('Face_picture_to_recognise1.jpg', 'Name1')
-    face_manager.add_person('Face_picture_to_recognise2.jpg', 'Name 2')
+    image_path = "/home/name/Scripts/Cheatsheets/test.jpg"  
+    person_name = "Rosi"  
+    face_manager.add_person(image_path, person_name)  
 
+    print("Starting camera for face detection...")
     video_face_recognition = VideoFaceRecognition(face_manager)
     video_face_recognition.detect_faces()
