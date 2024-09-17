@@ -9,14 +9,14 @@ class FaceRecognitionManager:
         self.saved_face_encodings = []
         self.saved_names = []
         self.storage_file = storage_file
-        self._load_saved_faces()
+        self.load_faces()
 
     def add_person(self, face_encoding, person_name):
         self.saved_face_encodings.append(face_encoding)
         self.saved_names.append(person_name)
-        self._save_faces()
+        self.save_faces()
 
-    def _load_saved_faces(self):
+    def load_faces(self):
         if not os.path.exists(self.storage_file) or os.path.getsize(self.storage_file) == 0:
             print("No saved faces found. Starting with an empty database.")
             return
@@ -29,7 +29,7 @@ class FaceRecognitionManager:
         except json.JSONDecodeError as e:
             print(f"Error reading the saved faces JSON file: {e}")
 
-    def _save_faces(self):
+    def save_faces(self):
         data = {
             'encodings': [encoding.tolist() for encoding in self.saved_face_encodings],
             'names': self.saved_names
@@ -41,9 +41,9 @@ class FaceRecognitionManager:
 class VideoFaceRecognition:
     def __init__(self, face_manager):
         self.face_manager = face_manager
-        self.camera = self._initialize_camera()
+        self.camera = self.start_camera()
 
-    def _initialize_camera(self):
+    def start_camera(self):
         camera = cv2.VideoCapture(0)
         if not camera.isOpened():
             print("Error: Could not open video device.")
@@ -56,61 +56,61 @@ class VideoFaceRecognition:
             return
 
         while True:
-            frame = self._capture_frame()
+            frame = self.capture_frame()
             if frame is None:
                 continue
 
-            rgb_frame = self._convert_frame_to_rgb(frame)
+            rgb_frame = self.frame_to_rgb(frame)
             face_locations = face_recognition.face_locations(rgb_frame)
             face_encodings = face_recognition.face_encodings(rgb_frame)
 
-            self._process_detected_faces(frame, face_locations, face_encodings)
+            self.detected_faces(frame, face_locations, face_encodings)
 
             cv2.imshow('Video', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-        self._cleanup()
+        self.cleanup()
 
-    def _capture_frame(self):
+    def capture_frame(self):
         ret, frame = self.camera.read()
         if not ret:
             print("Error reading video stream.")
             return None
         return frame
 
-    def _convert_frame_to_rgb(self, frame):
+    def frame_to_rgb(self, frame):
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    def _process_detected_faces(self, frame, face_locations, face_encodings):
+    def detected_faces(self, frame, face_locations, face_encodings):
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            person_name = self._identify_person(face_encoding)
-            self._draw_face_label(frame, top, right, bottom, left, person_name)
+            person_name = self.spot_person(face_encoding)
+            self.draw_label(frame, top, right, bottom, left, person_name)
 
             if person_name == "Unknown":
-                self._handle_unknown_face(face_encoding)
+                self.deal_with_unknown_person(face_encoding)
 
-    def _identify_person(self, face_encoding):
+    def spot_person(self, face_encoding):
         matches = face_recognition.compare_faces(self.face_manager.saved_face_encodings, face_encoding)
         if True in matches:
             match_index = matches.index(True)
             return self.face_manager.saved_names[match_index]
         return "Unknown"
 
-    def _handle_unknown_face(self, face_encoding):
+    def deal_with_unknown_person(self, face_encoding):
         user_input = input("Unbekanntes Gesicht erkannt. Möchtest du es speichern? (y/n): ")
         if user_input.lower() == 'y':
             person_name = input("Bitte gib den Namen der Person ein: ")
             self.face_manager.add_person(face_encoding, person_name)
             print(f"{person_name} wurde gespeichert.")
 
-    def _draw_face_label(self, frame, top, right, bottom, left, person_name):
+    def draw_label(self, frame, top, right, bottom, left, person_name):
         cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
         cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
         font = cv2.FONT_HERSHEY_DUPLEX
         cv2.putText(frame, person_name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
-    def _cleanup(self):
+    def cleanup(self):
         self.camera.release()
         cv2.destroyAllWindows()
 
